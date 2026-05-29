@@ -1,4 +1,3 @@
-from ttkthemes import ThemedTk
 import tkinter as tk
 from tkinter import *
 from tkinter import ttk, filedialog, messagebox, scrolledtext, font
@@ -14,7 +13,12 @@ custom_font = ("Consolas", 12)
 auto_save_interval = 300  # seconds
 
 # ---------------------------- Root Window ---------------------------- #
-root = ThemedTk(theme="arc")
+try:
+    from ttkthemes import ThemedTk
+    root = ThemedTk(theme="arc")
+except ImportError:
+    root = tk.Tk()
+
 root.title("SnipText Pro")
 root.geometry("1000x700")
 root.configure(bg="#f0f0f0")
