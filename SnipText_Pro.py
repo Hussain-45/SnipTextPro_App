@@ -8,35 +8,36 @@ import keyword
 # -------------------------- Notepad Pro Palette -------------------------- #
 THEMES = {
     "light": {
-        "bg_base": "#f0f0f0",       
-        "bg_widget": "#ffffff",     
-        "border": "#dcdcdc",        
-        "fg_main": "#000000",       
-        "fg_muted": "#555555",      
-        "accent": "#007acc",        
-        "insert": "#000000",        
-        "kw_color": "#0000ff"       
+        "bg_base": "#f0f0f0",       # Main frame layout color
+        "bg_widget": "#ffffff",     # Notepad pristine white canvas
+        "border": "#dcdcdc",        # Clean thin separator borders
+        "fg_main": "#000000",       # Sharp black system text
+        "fg_muted": "#555555",      # Gray status/sidebar details
+        "accent": "#007acc",        # Classic focus blue
+        "insert": "#000000",        # Black caret insertion point
+        "kw_color": "#0000ff"       # Traditional IDE Royal Blue keywords
     },
     "dark": {
-        "bg_base": "#202020",       
-        "bg_widget": "#111111",     
-        "border": "#333333",        
-        "fg_main": "#e0e0e0",       
-        "fg_muted": "#888888",      
-        "accent": "#107c41",        
-        "insert": "#ffffff",        
-        "kw_color": "#569cd6"       
+        "bg_base": "#202020",       # Frame layout background
+        "bg_widget": "#111111",     # Deep Obsidian Black canvas
+        "border": "#333333",        # Stealth dark borders
+        "fg_main": "#e0e0e0",       # Off-white readability text
+        "fg_muted": "#888888",      # Charcoal commentary text
+        "accent": "#107c41",        # Dark accent highlight 
+        "insert": "#ffffff",        # High visibility white caret
+        "kw_color": "#569cd6"       # Modern crisp ice-blue keywords
     }
 }
 
 current_theme = "light"
 current_file_paths = {}
+current_workspace_dir = os.path.abspath(".")  # Tracks active workspace absolute path
 auto_save_interval = 300  # seconds
 
 # ---------------------------- Root Window ---------------------------- #
 root = tk.Tk()
-root.title("SnipText Pro")
-root.geometry("1000x700")
+root.title("SnipText Pro Workspace")
+root.geometry("1150x750")
 root.configure(bg=THEMES[current_theme]["bg_base"])
 
 style = ttk.Style()
@@ -66,41 +67,35 @@ def get_current_text():
 
 # ---------------------------- Close Tab Logic ---------------------------- #
 def close_tab(event):
-    """Triggered on double-clicking a tab. Handles unsaved prompts."""
     try:
-        # Determine which tab element index was clicked
         clicked_tab = tab_control.tk.call(tab_control._w, "identify", "tab", event.x, event.y)
         if clicked_tab == "": 
-            return # Clicked empty space on tab bar
+            return 
             
         tab_id = tab_control.tabs()[clicked_tab]
         frame = tab_control.nametowidget(tab_id)
         text_area = frame.text_area
         
-        # Check if file has unsaved edits
         if text_area.edit_modified():
             path = current_file_paths.get(str(tab_id))
             file_name = os.path.basename(path) if path else "Untitled"
             
-            # Notepad style triple option choice box
             choice = messagebox.askyesnocancel(
                 "Save Changes?", 
                 f"Do you want to save changes to {file_name} before closing?"
             )
             
-            if choice is True: # User clicked Save
+            if choice is True: 
                 save_file(specific_tab=tab_id)
-            elif choice is False: # User clicked Don't Save
+            elif choice is False: 
                 pass 
-            else: # User clicked Cancel
+            else: 
                 return 
 
-        # Wipe tracking pointers and drop tab from window view
         if str(tab_id) in current_file_paths:
             del current_file_paths[str(tab_id)]
         tab_control.forget(tab_id)
         
-        # Open a fresh tab automatically if all tabs are closed
         if not tab_control.tabs():
             new_tab()
     except Exception:
@@ -116,7 +111,7 @@ def auto_save():
                 content = text_widget.get("1.0", END)
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(content)
-                text_widget.edit_modified(False) # Reset modified state after save
+                text_widget.edit_modified(False) 
             except Exception:
                 pass
     root.after(auto_save_interval * 1000, auto_save)
@@ -139,7 +134,7 @@ def toolbar_button(icon_text, command):
     return btn
 
 toolbar_button("📄 New", lambda: new_tab()).pack(side=LEFT, padx=2)
-toolbar_button("📂 Open", lambda: open_file()).pack(side=LEFT, padx=2)
+toolbar_button("📂 Open File", lambda: open_file()).pack(side=LEFT, padx=2)
 toolbar_button("💾 Save", lambda: save_file()).pack(side=LEFT, padx=2)
 toolbar_button("✂️ Cut", lambda: cut()).pack(side=LEFT, padx=2)
 toolbar_button("📋 Copy", lambda: copy()).pack(side=LEFT, padx=2)
@@ -150,9 +145,16 @@ toolbar_button("🕒 Time", lambda: insert_datetime()).pack(side=LEFT, padx=2)
 theme_btn = toolbar_button("🌓 Theme", lambda: toggle_theme())
 theme_btn.pack(side=RIGHT, padx=5)
 
-# ---------------------------- Left Sidebar ---------------------------- #
-sidebar = Frame(root, width=200, bg=THEMES[current_theme]["bg_base"], bd=0)
+# ------------------------- Workspace Explorer Sidebar ------------------------- #
+sidebar = Frame(root, width=220, bg=THEMES[current_theme]["bg_base"], bd=0)
 sidebar.pack(side=LEFT, fill=Y, padx=5, pady=5)
+
+open_dir_btn = Button(
+    sidebar, text="📁 Open Workspace Folder", command=lambda: change_workspace(),
+    relief=GROOVE, bg=THEMES[current_theme]["bg_widget"], fg=THEMES[current_theme]["fg_main"],
+    font=("Segoe UI", 9), bd=1, padx=5, pady=4
+)
+open_dir_btn.pack(fill=X, padx=2, pady=(2, 5))
 
 file_listbox = Listbox(
     sidebar, bg=THEMES[current_theme]["bg_widget"], fg=THEMES[current_theme]["fg_main"],
@@ -164,19 +166,49 @@ file_listbox.pack(fill=BOTH, expand=1, padx=2, pady=2)
 def populate_file_list():
     file_listbox.delete(0, END)
     try:
-        for file in os.listdir("."):
-            if file in ["SnipText-Pro.py", "SnipText_Pro.py", "main.py"]:
+        abs_path = os.path.abspath(current_workspace_dir)
+        if not os.path.exists(abs_path):
+            file_listbox.insert(END, " (Folder does not exist) ")
+            return
+
+        files = os.listdir(abs_path)
+        
+        valid_files = []
+        for f in files:
+            full_item_path = os.path.join(abs_path, f)
+            # Skip directories to focus on opening core target text sheets
+            if os.path.isdir(full_item_path):
                 continue
-            if file.endswith((".txt", ".py")):
-                file_listbox.insert(END, file)
-    except Exception:
-        pass
+            # Hide runtime editor application background binaries/scripts
+            if f in ["SnipText-Pro.py", "SnipText_Pro.py", "main.py"]:
+                continue
+            valid_files.append(f)
+        
+        if not valid_files:
+            file_listbox.insert(END, " (No files in this folder) ")
+        else:
+            for file in valid_files:
+                file_listbox.insert(END, f" 📄 {file}")
+    except Exception as e:
+        file_listbox.insert(END, " (Failed to read folder) ")
+
+def change_workspace():
+    global current_workspace_dir
+    chosen_dir = filedialog.askdirectory()
+    if chosen_dir:
+        current_workspace_dir = chosen_dir
+        populate_file_list()
 
 def open_selected_file():
     selection = file_listbox.curselection()
     if selection:
-        filename = file_listbox.get(selection[0])
-        open_path(os.path.abspath(filename))
+        item_text = file_listbox.get(selection[0])
+        # Defensive catch if clicking helper messaging placeholders
+        if item_text.startswith(" ("):
+            return
+        filename = item_text.replace(" 📄 ", "").strip()
+        full_path = os.path.join(current_workspace_dir, filename)
+        open_path(os.path.abspath(full_path))
 
 file_listbox.bind("<Double-Button-1>", lambda e: open_selected_file())
 populate_file_list()
@@ -184,7 +216,6 @@ populate_file_list()
 # ---------------------------- File Handlers ---------------------------- #
 def open_path(path):
     if os.path.isfile(path):
-        # Stop file duplicates reopening into new windows tabs
         for id_check in tab_control.tabs():
             if current_file_paths.get(str(id_check)) == path:
                 tab_control.select(id_check)
@@ -197,13 +228,11 @@ def open_path(path):
         if txt:
             txt.insert(1.0, content)
             highlight_syntax(txt)
-            txt.edit_modified(False) # Reset modified state after loading text
+            txt.edit_modified(False)
 
 # ---------------------------- Notebook Workspace Canvas ---------------------------- #
 tab_control = ttk.Notebook(root)
 tab_control.pack(expand=1, fill="both", padx=5, pady=5)
-
-# BINDING EXPLANATION: Double-click tab description block anywhere to exit file view!
 tab_control.bind("<Double-Button-1>", close_tab)
 
 def add_tab_with_close(title, path=None):
@@ -219,7 +248,6 @@ def add_tab_with_close(title, path=None):
     text_area.pack(expand=1, fill=BOTH)
     frame.text_area = text_area
     
-    # Pad out text string label space slightly for clean readability aesthetics
     tab_control.add(frame, text=f" {title} ")
     tab_control.select(frame)
     current_file_paths[str(frame)] = path
@@ -276,6 +304,7 @@ def toggle_theme():
     toolbar.configure(bg=t["bg_base"])
     sidebar.configure(bg=t["bg_base"])
     file_listbox.configure(bg=t["bg_widget"], fg=t["fg_main"], selectbackground=t["border"], selectforeground=t["fg_main"])
+    open_dir_btn.configure(bg=t["bg_widget"], fg=t["fg_main"], activebackground=t["border"])
     status_bar.configure(bg=t["bg_base"])
     status_label.configure(bg=t["bg_base"], fg=t["fg_muted"])
     
@@ -300,7 +329,6 @@ def open_file():
         open_path(path)
 
 def save_file(specific_tab=None):
-    """Saves text contents. Can target a specific tab if closing."""
     target_tab = specific_tab if specific_tab else tab_control.select()
     if not target_tab: return
     
@@ -317,7 +345,7 @@ def save_file(specific_tab=None):
                 f.write(content)
             current_file_paths[str(target_tab)] = path
             tab_control.tab(target_tab, text=f" {os.path.basename(path)} ")
-            text_widget.edit_modified(False) # Clear modified tracking state
+            text_widget.edit_modified(False) 
             populate_file_list()
         except Exception as e:
             messagebox.showerror("Error", f"Could not save file: {e}")
